@@ -1,6 +1,6 @@
 import React from 'react'
 import { useState } from 'react';
-import logo from '../assets/logo.png';
+import logo from '../assets/logo.jpg';
 import { Link } from 'react-router-dom';
 import { Menu, X } from 'lucide-react'
 
@@ -16,7 +16,7 @@ const Navbar = () => {
             <div className='container px-4 mx-auto relative text-sm'>
                 <div className='flex justify-between items-center'>
                     <div className='flex items-center flex-shrink-0'>
-                        <img className='h-10 w-10 mr-2' src={logo}></img>
+                        <img className='h-11 w-11 mr-2 rounded-2xl ' src={logo}></img>
                         <span className='text-xl tracking-tight'>TaleFlectAI</span>
                     </div>
                     <ul className='hidden lg:flex ml-14 space-x-12'>
@@ -27,7 +27,7 @@ const Navbar = () => {
                     </ul>
                     <div className='hidden lg:flex justify-center space-x-12 items-center '>
                         <a className='py-2 px-3 border rounded-md'>SignIn</a>
-                        <a className='bg-gradient-to-r from-yellow-500 to-yellow-900 py-2 px-3 rounded-md'>SignUp</a>
+                        <a className='bg-gradient-to-r from-yellow-500 to-yellow-900 py-2 px-3 rounded-md border border-neutral-400'>SignUp</a>
                     </div>
                     <div className='lg:hidden md:flex flex-col justify-end'>
                         <button onClick={toggleNavbar}>
