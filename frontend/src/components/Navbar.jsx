@@ -17,17 +17,17 @@ const Navbar = () => {
                 <div className='flex justify-between items-center'>
                     <div className='flex items-center flex-shrink-0'>
                         <img className='h-11 w-11 mr-2 rounded-2xl ' src={logo}></img>
-                        <span className='text-xl tracking-tight'>TaleFlectAI</span>
+                        <span className='text-xl tracking-tight'>Tale<span className='bg-gradient-to-r from-yellow-500 to-yellow-800 text-transparent bg-clip-text'>Flect.AI</span></span>
                     </div>
-                    <ul className='hidden lg:flex ml-14 space-x-12'>
+                    <ul className='hidden lg:flex ml-14 space-x-12 text-[17px]'>
                         <li><a>Home</a></li>
                         <li><a>Features</a></li>
                         <li><a>Contact</a></li>
                         <li><a>Pricing</a></li>
                     </ul>
                     <div className='hidden lg:flex justify-center space-x-12 items-center '>
-                        <a className='py-2 px-3 border rounded-md'>SignIn</a>
-                        <a className='bg-gradient-to-r from-yellow-500 to-yellow-900 py-2 px-3 rounded-md border border-neutral-400'>SignUp</a>
+                        <a className='py-2 px-3 border rounded-md'>Sign In</a>
+                        <a className='bg-gradient-to-r from-yellow-500 to-yellow-900 py-2 px-3 rounded-md border border-neutral-400'>Sign Up</a>
                     </div>
                     <div className='lg:hidden md:flex flex-col justify-end'>
                         <button onClick={toggleNavbar}>
@@ -48,8 +48,8 @@ const Navbar = () => {
                                 <li className='py-2'><a>Pricing</a></li>
                             </ul>
                             <div className='flex justify-center space-x-6 items-center py-4'>
-                                <a className='py-2 px-3 border rounded-md'>SignIn</a>
-                                <a className='bg-gradient-to-r from-yellow-500 to-yellow-900 py-2 px-3 rounded-md'>SignUp</a>
+                                <a className='py-2 px-3 border rounded-md'>Sign In</a>
+                                <a className='bg-gradient-to-r from-yellow-500 to-yellow-900 py-2 px-3 rounded-md'>Sign Up</a>
                             </div>
                             
 

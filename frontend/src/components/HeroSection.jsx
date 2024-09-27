@@ -13,7 +13,6 @@ const HeroSection = () => {
       <div className='flex justify-center my-10'>
         <a href="#" className='bg-gradient-to-r from-yellow-500 to-yellow-900 rounded-md border border-neutral-400 py-3 px-4 mx-3'>Start Now</a>
         <a href ="#" className='rounded-md border border-neutral-400 py-3 px-4 mx-3'>How it works?</a>
-
       </div>
       
     </div>
