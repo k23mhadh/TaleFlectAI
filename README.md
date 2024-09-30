@@ -1,4 +1,4 @@
-TaleFlect
+# TaleFlect
 
 Welcome to TaleFlect, an AI-driven platform designed to generate eBooks at scale using advanced language models. Unlike traditional LLMs (Large Language Models) such as GPT or LLaMA, which struggle with generating long-form content like books, TaleFlect leverages AI to overcome these limitations and produce eBooks seamlessly.
 Table of Contents
@@ -10,10 +10,10 @@ Table of Contents
     How to Contribute
     License
 
-Project Overview
+## Project Overview
 
 The primary goal of this project is to create a platform where users can generate entire eBooks using AI.
-Tech Stack
+## Tech Stack
 Backend
 
     Node.js: JavaScript runtime for building server-side applications.
@@ -29,7 +29,7 @@ Other
 
     SmartGit: Version control system for managing codebase collaboration.
 
-Installation
+## Installation
 Prerequisites
 
 Before you can run this project locally, ensure you have the following installed on your machine:
@@ -89,7 +89,7 @@ bash
 
     Navigate to http://localhost:3000 in your browser to view the frontend interface.
 
-Project Structure
+## Project Structure
 
 The repository is divided into multiple branches for better code organization:
 
@@ -104,37 +104,36 @@ Backend (Node.js + Express)
 
 bash
 
-backend/
-│
-├── src/ 
-│   ├── controllers/   # Request handlers
-│   ├── models/        # Database models (if applicable)
-│   ├── routes/        # API routes
-│   ├── services/      # Business logic and microservices
-│   └── utils/         # Utility functions
-│
-├── tests/             # Unit and integration tests
-└── package.json       # Dependencies and scripts
+    backend/
+    │
+    ├── src/ 
+    │   ├── controllers/   # Request handlers
+    │   ├── models/        # Database models (if applicable)
+    │   ├── routes/        # API routes
+    │   ├── services/      # Business logic and microservices
+    │   └── utils/         # Utility functions
+    │
+    ├── tests/             # Unit and integration tests
+    └── package.json       # Dependencies and scripts
 
 Frontend (React + Tailwind CSS)
+bash
+    
+    frontend/
+    │
+    ├── src/
+    │   ├── assets       # all asstets used in the frontend
+    │   ├── constants    # constants (e.g., names, texts, etc..)
+    │   ├── components/    # Reusable UI components
+    │   ├── pages/         # Main page components (e.g., LandingPage, SignIn)
+    │   ├── services/      # API calls and services
+    │   ├── index.css        # Tailwind CSS configuration
+    │   ├── App.jsx         # Main app structure
+    │   └── main.jsx       # App entry point
+    │
+    └── package.json       # Dependencies and scripts
 
-graphql
-
-frontend/
-│
-├── src/
-│   ├── assets       # all asstets used in the frontend
-│   ├── constants    # constants (e.g., names, texts, etc..)
-│   ├── components/    # Reusable UI components
-│   ├── pages/         # Main page components (e.g., LandingPage, SignIn)
-│   ├── services/      # API calls and services
-│   ├── index.css        # Tailwind CSS configuration
-│   ├── App.jsx         # Main app structure
-│   └── main.jsx       # App entry point
-│
-└── package.json       # Dependencies and scripts
-
-How to Contribute
+## How to Contribute
 
 We are excited to welcome contributors! Follow the guidelines below to ensure smooth collaboration:
 
@@ -161,6 +160,6 @@ Please ensure your code adheres to the following:
     No direct changes to the Master branch.
 
 For a more detailed contribution process, please refer to our Contributing Guidelines.
-License
+## License
 
 This project is licensed under the MIT License. See the LICENSE file for more information.
