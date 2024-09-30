@@ -106,7 +106,7 @@ bash
 
 backend/
 │
-├── src/
+├── src/ 
 │   ├── controllers/   # Request handlers
 │   ├── models/        # Database models (if applicable)
 │   ├── routes/        # API routes
