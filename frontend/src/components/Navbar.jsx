@@ -26,7 +26,7 @@ const Navbar = () => {
                         <li><a>Pricing</a></li>
                     </ul>
                     <div className='hidden lg:flex justify-center space-x-12 items-center '>
-                        <a className='py-2 px-3 border rounded-md'>Sign In</a>
+                        <a className='py-2 px-3 border rounded-md'>LogIn</a>
                         <a className='bg-gradient-to-r from-yellow-500 to-yellow-900 py-2 px-3 rounded-md border border-neutral-400'>Sign Up</a>
                     </div>
                     <div className='lg:hidden md:flex flex-col justify-end'>
@@ -48,7 +48,7 @@ const Navbar = () => {
                                 <li className='py-2'><a>Pricing</a></li>
                             </ul>
                             <div className='flex justify-center space-x-6 items-center py-4'>
-                                <a className='py-2 px-3 border rounded-md'>Sign In</a>
+                                <a className='py-2 px-3 border rounded-md'>LogIn</a>
                                 <a className='bg-gradient-to-r from-yellow-500 to-yellow-900 py-2 px-3 rounded-md'>Sign Up</a>
                             </div>
                             

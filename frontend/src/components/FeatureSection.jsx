@@ -3,7 +3,7 @@ import React from 'react'
 
 const FeatureSection = () => {
     return (
-        <div className='relative mt-20 border-b border-neutral-800 min-h-[800px]'>
+        <div className='relative mt-20  border-neutral-800 min-h-[800px]'> {/* add border-b if u want*/}
             <div className='text-center'>
                 <span className='bg-neutral-900 text-yellow-600 text-xl rounded-full font-medium px-2 py-1 uppercase'>FEATURE</span>
                 <h2 className='text-3xl sm:text-5xl lg:6xl mt-10 lg:mt-20 tracking-wide'>
