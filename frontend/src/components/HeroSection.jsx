@@ -2,7 +2,7 @@ import React from 'react'
 
 const HeroSection = () => {
   return (
-    <div className='flex flex-col items-center mt-6 lg:mt-20 '>
+    <div id="heroSection" className='flex flex-col items-center mt-6 lg:mt-20 '>
       <h1 className='text-4xl sm:text-6xl lg:text-7xl text-center tracking-wide lg:leading-[1.25] '>Create Stunning eBooks in 
         <span className='bg-gradient-to-r from-yellow-500 to-yellow-900 text-transparent bg-clip-text'>{" "}Minutes with AI!</span>
       </h1>
