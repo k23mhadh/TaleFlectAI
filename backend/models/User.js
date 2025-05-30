@@ -114,6 +114,27 @@ const userSchema = new mongoose.Schema({
       default: 0
     }
   },
+  // Add AI usage tracking
+  aiUsage: {
+    date: {
+      type: Date,
+      default: Date.now
+    },
+    count: {
+      type: Number,
+      default: 0
+    }
+  },
+  subscriptionTier: {
+    type: String,
+    enum: ['free', 'premium'],
+    default: 'free'
+  },
+  role: {
+    type: String,
+    enum: ['user', 'admin'],
+    default: 'user'
+  },
   isVerified: {
     type: Boolean,
     default: false
@@ -144,13 +165,27 @@ userSchema.virtual('books', {
 userSchema.pre('save', async function(next) {
   if (!this.isModified('password')) return next();
   
-  this.password = await bcrypt.hash(this.password, parseInt(process.env.BCRYPT_SALT_ROUNDS) || 12);
-  next();
+  try {
+    const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS) || 12;
+    this.password = await bcrypt.hash(this.password, saltRounds);
+    next();
+  } catch (error) {
+    next(error);
+  }
 });
 
 // Compare password method
 userSchema.methods.comparePassword = async function(candidatePassword) {
-  return await bcrypt.compare(candidatePassword, this.password);
+  if (!candidatePassword || !this.password) {
+    return false;
+  }
+  
+  try {
+    return await bcrypt.compare(candidatePassword, this.password);
+  } catch (error) {
+    console.error('Password comparison error:', error);
+    return false;
+  }
 };
 
 // Update last login
@@ -178,6 +213,17 @@ userSchema.methods.updateStats = function(statsUpdate) {
     }
   });
   return this.save();
+};
+
+// Initialize AI usage if not exists
+userSchema.methods.initializeAIUsage = function() {
+  if (!this.aiUsage) {
+    this.aiUsage = {
+      date: new Date(),
+      count: 0
+    };
+  }
+  return this;
 };
 
 module.exports = mongoose.model('User', userSchema);

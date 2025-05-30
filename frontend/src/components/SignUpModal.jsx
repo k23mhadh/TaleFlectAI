@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { GoogleLogin } from '@react-oauth/google';
-import axios from 'axios';
+import { useAuth } from '../contexts/AuthContext';
 
 function SignUpModal({ modalVisible, onCloseModal }) {
   const modalRef = useRef(null);
@@ -12,19 +12,19 @@ function SignUpModal({ modalVisible, onCloseModal }) {
     confirmPassword: ''
   });
   const [errors, setErrors] = useState({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [apiError, setApiError] = useState('');
+  const { register, isLoading, error: authError, clearError } = useAuth();
 
   // Trigger transition when modal visibility changes
   useEffect(() => {
     if (modalVisible) {
       setShowModal(true);
+      clearError(); // Clear any previous errors
     } else {
       setTimeout(() => {
         setShowModal(false);
       }, 300);
     }
-  }, [modalVisible]);
+  }, [modalVisible, clearError]);
 
   // Handle outside click to close modal
   useEffect(() => {
@@ -56,6 +56,11 @@ function SignUpModal({ modalVisible, onCloseModal }) {
         ...prev,
         [id]: ''
       }));
+    }
+    
+    // Clear auth error when user types
+    if (authError) {
+      clearError();
     }
   };
 
@@ -92,65 +97,45 @@ function SignUpModal({ modalVisible, onCloseModal }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setApiError('');
     
     if (!validateForm()) {
       return;
     }
     
-    setIsSubmitting(true);
-    
     try {
-      const response = await axios.post('/api/auth/register', {
+      const result = await register({
         name: formData.name,
         email: formData.email,
         password: formData.password
       });
       
-      // Handle successful registration
-      console.log('Registration successful:', response.data);
-      onCloseModal();
-      
-      // You might want to automatically log the user in here
-      // or redirect them to a verification page
-      
-    } catch (error) {
-      console.error('Registration error:', error);
-      
-      if (error.response) {
-        // Backend validation error
-        if (error.response.data.message) {
-          setApiError(error.response.data.message);
-        } else if (error.response.data.errors) {
-          // Handle field-specific errors from backend
-          const backendErrors = {};
-          error.response.data.errors.forEach(err => {
-            backendErrors[err.path] = err.msg;
-          });
-          setErrors(backendErrors);
-        }
-      } else {
-        setApiError('An error occurred during registration. Please try again.');
+      if (result.success) {
+        onCloseModal();
+        // Reset form
+        setFormData({ name: '', email: '', password: '', confirmPassword: '' });
+        setErrors({});
       }
-    } finally {
-      setIsSubmitting(false);
+    } catch (error) {
+      // Error is handled by AuthContext
+      console.error('Registration error:', error);
     }
   };
 
   // Google Sign Up Response Handler
   const handleGoogleSignup = async (response) => {
     try {
-      const res = await axios.post('/api/auth/google', {
-        credential: response.credential
-      });
+      // You'll need to add Google OAuth support to your AuthContext
+      // For now, we'll log this
+      console.log('Google signup credential:', response.credential);
       
-      console.log('Google signup successful:', res.data);
-      onCloseModal();
+      // You would send this credential to your backend
+      // const result = await register({ googleCredential: response.credential });
       
-      // Handle successful Google signup (e.g., store tokens, redirect)
+      // Placeholder - you need to implement Google auth in backend
+      alert('Google signup not yet implemented in backend');
+      
     } catch (error) {
       console.error('Google signup error:', error);
-      setApiError(error.response?.data?.message || 'Google signup failed. Please try again.');
     }
   };
 
@@ -202,9 +187,9 @@ function SignUpModal({ modalVisible, onCloseModal }) {
         </div>
 
         <div className="p-4 md:p-5">
-          {apiError && (
+          {authError && (
             <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
-              {apiError}
+              {authError}
             </div>
           )}
           
@@ -223,6 +208,7 @@ function SignUpModal({ modalVisible, onCloseModal }) {
                 className={`bg-gray-50 border ${errors.name ? 'border-red-500' : 'border-gray-300'} text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white`}
                 value={formData.name}
                 onChange={handleChange}
+                disabled={isLoading}
               />
               {errors.name && <p className="mt-1 text-sm text-red-600">{errors.name}</p>}
             </div>
@@ -241,6 +227,7 @@ function SignUpModal({ modalVisible, onCloseModal }) {
                 className={`bg-gray-50 border ${errors.email ? 'border-red-500' : 'border-gray-300'} text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white`}
                 value={formData.email}
                 onChange={handleChange}
+                disabled={isLoading}
               />
               {errors.email && <p className="mt-1 text-sm text-red-600">{errors.email}</p>}
             </div>
@@ -259,6 +246,7 @@ function SignUpModal({ modalVisible, onCloseModal }) {
                 className={`bg-gray-50 border ${errors.password ? 'border-red-500' : 'border-gray-300'} text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white`}
                 value={formData.password}
                 onChange={handleChange}
+                disabled={isLoading}
               />
               {errors.password && <p className="mt-1 text-sm text-red-600">{errors.password}</p>}
             </div>
@@ -277,16 +265,17 @@ function SignUpModal({ modalVisible, onCloseModal }) {
                 className={`bg-gray-50 border ${errors.confirmPassword ? 'border-red-500' : 'border-gray-300'} text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white`}
                 value={formData.confirmPassword}
                 onChange={handleChange}
+                disabled={isLoading}
               />
               {errors.confirmPassword && <p className="mt-1 text-sm text-red-600">{errors.confirmPassword}</p>}
             </div>
             
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isLoading}
               className="w-full text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isSubmitting ? 'Signing Up...' : 'Sign Up'}
+              {isLoading ? 'Signing Up...' : 'Sign Up'}
             </button>
             
             <div className="text-sm font-medium text-gray-500 dark:text-gray-300">
@@ -304,9 +293,8 @@ function SignUpModal({ modalVisible, onCloseModal }) {
                 onSuccess={handleGoogleSignup}
                 onError={(error) => {
                   console.log('Google Sign In Error:', error);
-                  setApiError('Google sign in failed. Please try again.');
                 }}
-                useOneTap
+                useOneTap={false}
               />
             </div>
           </form>

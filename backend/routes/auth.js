@@ -38,11 +38,14 @@ const generateRefreshToken = (id) => {
   });
 };
 
-// Send token response without saving the user again
+// Send token response
 const sendTokenResponse = (user, statusCode, res) => {
   const token = generateToken(user._id);
-  const refreshToken = user.refreshToken;
+  const refreshToken = generateRefreshToken(user._id);
 
+  // Update user with refresh token
+  user.refreshToken = refreshToken;
+  
   const options = {
     expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     httpOnly: true,
@@ -76,35 +79,53 @@ router.post('/register', [
     .withMessage('Password must contain at least one uppercase letter, one lowercase letter, and one number')
 ], asyncHandler(async (req, res, next) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty()) return next(new AppError(errors.array()[0].msg, 400));
+  if (!errors.isEmpty()) {
+    return res.status(400).json({
+      success: false,
+      error: errors.array()[0].msg
+    });
+  }
 
   const { name, email, password } = req.body;
 
   const existingUser = await User.findOne({ email });
-  if (existingUser) return next(new AppError('User with this email already exists', 400));
-
-  const user = await User.create({ name, email, password });
-
-  const verificationToken = crypto.randomBytes(20).toString('hex');
-  user.verificationToken = verificationToken;
-  user.refreshToken = generateRefreshToken(user._id);
-  await user.save({ validateBeforeSave: false });
-
-  if (transporter) {
-    try {
-      const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
-      await transporter.sendMail({
-        from: process.env.EMAIL_USER,
-        to: user.email,
-        subject: 'Verify Your TaleFlectAI Account',
-        html: `<h1>Welcome to TaleFlectAI!</h1><p>Click below to verify:</p><a href="${verificationUrl}">Verify Email</a>`
-      });
-    } catch (err) {
-      console.error('Email sending error:', err);
-    }
+  if (existingUser) {
+    return res.status(400).json({
+      success: false,
+      error: 'User with this email already exists'
+    });
   }
 
-  sendTokenResponse(user, 201, res);
+  try {
+    const user = await User.create({ name, email, password });
+
+    const verificationToken = crypto.randomBytes(20).toString('hex');
+    user.verificationToken = verificationToken;
+    user.refreshToken = generateRefreshToken(user._id);
+    await user.save({ validateBeforeSave: false });
+
+    if (transporter) {
+      try {
+        const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
+        await transporter.sendMail({
+          from: process.env.EMAIL_USER,
+          to: user.email,
+          subject: 'Verify Your TaleFlectAI Account',
+          html: `<h1>Welcome to TaleFlectAI!</h1><p>Click below to verify:</p><a href="${verificationUrl}">Verify Email</a>`
+        });
+      } catch (err) {
+        console.error('Email sending error:', err);
+      }
+    }
+
+    sendTokenResponse(user, 201, res);
+  } catch (error) {
+    console.error('Registration error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Registration failed. Please try again.'
+    });
+  }
 }));
 
 // @desc    Login user
@@ -113,32 +134,72 @@ router.post('/login', [
   body('password').notEmpty().withMessage('Password is required')
 ], asyncHandler(async (req, res, next) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty()) return next(new AppError(errors.array()[0].msg, 400));
+  if (!errors.isEmpty()) {
+    return res.status(400).json({
+      success: false,
+      error: errors.array()[0].msg
+    });
+  }
 
   const { email, password } = req.body;
 
-  const user = await User.findOne({ email }).select('+password');
-  if (!user || !(await user.comparePassword(password))) {
-    return next(new AppError('Invalid credentials', 401));
+  try {
+    const user = await User.findOne({ email }).select('+password');
+    
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid credentials'
+      });
+    }
+
+    const isPasswordMatch = await user.comparePassword(password);
+    if (!isPasswordMatch) {
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid credentials'
+      });
+    }
+
+    if (!user.isActive) {
+      return res.status(401).json({
+        success: false,
+        error: 'Account is deactivated'
+      });
+    }
+
+    user.refreshToken = generateRefreshToken(user._id);
+    user.lastLogin = new Date();
+    await user.save({ validateBeforeSave: false });
+
+    sendTokenResponse(user, 200, res);
+  } catch (error) {
+    console.error('Login error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Login failed. Please try again.'
+    });
   }
-
-  user.refreshToken = generateRefreshToken(user._id);
-  user.updateLastLogin?.(); // if it's a method that does NOT save
-  await user.save({ validateBeforeSave: false });
-
-  sendTokenResponse(user, 200, res);
 }));
 
 // @desc    Logout user
 router.post('/logout', authMiddleware, asyncHandler(async (req, res) => {
-  req.user.refreshToken = undefined;
-  await req.user.save({ validateBeforeSave: false });
+  try {
+    req.user.refreshToken = undefined;
+    await req.user.save({ validateBeforeSave: false });
 
-  res
-    .clearCookie('token')
-    .clearCookie('refreshToken')
-    .status(200)
-    .json({ success: true, message: 'Logged out successfully' });
+    res
+      .clearCookie('token')
+      .clearCookie('refreshToken')
+      .status(200)
+      .json({ success: true, message: 'Logged out successfully' });
+  } catch (error) {
+    console.error('Logout error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Logout failed'
+    });
+  }
 }));
 
 // @desc    Get current logged in user
@@ -150,18 +211,30 @@ router.get('/me', authMiddleware, asyncHandler(async (req, res) => {
 // @desc    Refresh access token
 router.post('/refresh', asyncHandler(async (req, res, next) => {
   const { refreshToken } = req.body || req.cookies;
-  if (!refreshToken) return next(new AppError('Refresh token not provided', 401));
+  if (!refreshToken) {
+    return res.status(401).json({
+      success: false,
+      error: 'Refresh token not provided'
+    });
+  }
 
   try {
     const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET);
     const user = await User.findById(decoded.id);
+    
     if (!user || user.refreshToken !== refreshToken) {
-      return next(new AppError('Invalid refresh token', 401));
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid refresh token'
+      });
     }
 
     sendTokenResponse(user, 200, res);
-  } catch {
-    return next(new AppError('Invalid refresh token', 401));
+  } catch (error) {
+    return res.status(401).json({
+      success: false,
+      error: 'Invalid refresh token'
+    });
   }
 }));
 
@@ -170,10 +243,20 @@ router.post('/forgot-password', [
   body('email').isEmail().normalizeEmail().withMessage('Please provide a valid email')
 ], asyncHandler(async (req, res, next) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty()) return next(new AppError(errors.array()[0].msg, 400));
+  if (!errors.isEmpty()) {
+    return res.status(400).json({
+      success: false,
+      error: errors.array()[0].msg
+    });
+  }
 
   const user = await User.findOne({ email: req.body.email });
-  if (!user) return next(new AppError('No user found with this email', 404));
+  if (!user) {
+    return res.status(404).json({
+      success: false,
+      error: 'No user found with this email'
+    });
+  }
 
   const resetToken = crypto.randomBytes(20).toString('hex');
   user.passwordResetToken = resetToken;
@@ -190,12 +273,18 @@ router.post('/forgot-password', [
         html: `<h1>Password Reset</h1><a href="${resetUrl}">Reset Password</a><p>This link expires in 10 minutes.</p>`
       });
 
-      return res.status(200).json({ success: true, message: 'Password reset email sent' });
-    } catch {
+      return res.status(200).json({ 
+        success: true, 
+        message: 'Password reset email sent' 
+      });
+    } catch (emailError) {
       user.passwordResetToken = undefined;
       user.passwordResetExpires = undefined;
       await user.save({ validateBeforeSave: false });
-      return next(new AppError('Email could not be sent', 500));
+      return res.status(500).json({
+        success: false,
+        error: 'Email could not be sent'
+      });
     }
   }
 
@@ -215,14 +304,24 @@ router.put('/reset-password/:resettoken', [
     .withMessage('Password must contain one uppercase letter, one lowercase letter, and one number')
 ], asyncHandler(async (req, res, next) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty()) return next(new AppError(errors.array()[0].msg, 400));
+  if (!errors.isEmpty()) {
+    return res.status(400).json({
+      success: false,
+      error: errors.array()[0].msg
+    });
+  }
 
   const user = await User.findOne({
     passwordResetToken: req.params.resettoken,
     passwordResetExpires: { $gt: Date.now() }
   });
 
-  if (!user) return next(new AppError('Invalid or expired token', 400));
+  if (!user) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid or expired token'
+    });
+  }
 
   user.password = req.body.password;
   user.passwordResetToken = undefined;
@@ -237,13 +336,21 @@ router.put('/reset-password/:resettoken', [
 router.get('/verify-email/:token', asyncHandler(async (req, res, next) => {
   const user = await User.findOne({ verificationToken: req.params.token });
 
-  if (!user) return next(new AppError('Invalid verification token', 400));
+  if (!user) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid verification token'
+    });
+  }
 
   user.isVerified = true;
   user.verificationToken = undefined;
   await user.save({ validateBeforeSave: false });
 
-  res.status(200).json({ success: true, message: 'Email verified successfully' });
+  res.status(200).json({ 
+    success: true, 
+    message: 'Email verified successfully' 
+  });
 }));
 
 // @desc    Update password
@@ -256,13 +363,21 @@ router.put('/update-password', authMiddleware, [
     .withMessage('New password must contain one uppercase letter, one lowercase letter, and one number')
 ], asyncHandler(async (req, res, next) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty()) return next(new AppError(errors.array()[0].msg, 400));
+  if (!errors.isEmpty()) {
+    return res.status(400).json({
+      success: false,
+      error: errors.array()[0].msg
+    });
+  }
 
   const user = await User.findById(req.user.id).select('+password');
   const { currentPassword, newPassword } = req.body;
 
   if (!(await user.comparePassword(currentPassword))) {
-    return next(new AppError('Current password is incorrect', 401));
+    return res.status(401).json({
+      success: false,
+      error: 'Current password is incorrect'
+    });
   }
 
   user.password = newPassword;

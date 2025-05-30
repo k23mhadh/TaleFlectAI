@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
-import axios from 'axios';
 import { GoogleLogin } from '@react-oauth/google';
+import { useAuth } from '../contexts/AuthContext';
 
 function LoginModal({ modalVisible, onCloseModal }) {
   const modalRef = useRef(null);
@@ -11,19 +11,19 @@ function LoginModal({ modalVisible, onCloseModal }) {
     remember: false
   });
   const [errors, setErrors] = useState({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [apiError, setApiError] = useState('');
+  const { login, isLoading, error: authError, clearError } = useAuth();
 
   // Trigger transition when modal visibility changes
   useEffect(() => {
     if (modalVisible) {
       setShowModal(true);
+      clearError(); // Clear any previous errors
     } else {
       setTimeout(() => {
         setShowModal(false);
       }, 300);
     }
-  }, [modalVisible]);
+  }, [modalVisible, clearError]);
 
   // Handle outside click to close modal
   useEffect(() => {
@@ -56,6 +56,11 @@ function LoginModal({ modalVisible, onCloseModal }) {
         [id]: ''
       }));
     }
+    
+    // Clear auth error when user types
+    if (authError) {
+      clearError();
+    }
   };
 
   const validateForm = () => {
@@ -77,75 +82,44 @@ function LoginModal({ modalVisible, onCloseModal }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setApiError('');
     
     if (!validateForm()) {
       return;
     }
     
-    setIsSubmitting(true);
-    
     try {
-      const response = await axios.post('/api/auth/login', {
+      const result = await login({
         email: formData.email,
         password: formData.password
       });
       
-      // Handle successful login
-      console.log('Login successful:', response.data);
-      onCloseModal();
-      
-      // Store tokens if "remember me" is checked
-      if (formData.remember) {
-        localStorage.setItem('authToken', response.data.token);
-        localStorage.setItem('refreshToken', response.data.refreshToken);
-      } else {
-        sessionStorage.setItem('authToken', response.data.token);
-        sessionStorage.setItem('refreshToken', response.data.refreshToken);
+      if (result.success) {
+        onCloseModal();
+        // Reset form
+        setFormData({ email: '', password: '', remember: false });
+        setErrors({});
       }
-      
-      // You might want to redirect the user or update the global auth state here
-      
     } catch (error) {
+      // Error is handled by AuthContext
       console.error('Login error:', error);
-      
-      if (error.response) {
-        // Backend validation error
-        if (error.response.data.message) {
-          setApiError(error.response.data.message);
-        } else if (error.response.data.errors) {
-          const backendErrors = {};
-          error.response.data.errors.forEach(err => {
-            backendErrors[err.path] = err.msg;
-          });
-          setErrors(backendErrors);
-        }
-      } else {
-        setApiError('An error occurred during login. Please try again.');
-      }
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
   // Google Login Response Handler
   const handleGoogleLogin = async (response) => {
     try {
-      const res = await axios.post('/api/auth/google', {
-        credential: response.credential
-      });
+      // You'll need to add Google OAuth support to your AuthContext
+      // For now, we'll log this
+      console.log('Google login credential:', response.credential);
       
-      console.log('Google login successful:', res.data);
-      onCloseModal();
+      // You would send this credential to your backend
+      // const result = await login({ googleCredential: response.credential });
       
-      // Store tokens from Google login
-      localStorage.setItem('authToken', res.data.token);
-      localStorage.setItem('refreshToken', res.data.refreshToken);
+      // Placeholder - you need to implement Google auth in backend
+      alert('Google login not yet implemented in backend');
       
-      // Handle successful login (e.g., update global state, redirect)
     } catch (error) {
       console.error('Google login error:', error);
-      setApiError(error.response?.data?.message || 'Google login failed. Please try again.');
     }
   };
 
@@ -197,9 +171,9 @@ function LoginModal({ modalVisible, onCloseModal }) {
         </div>
 
         <div className="p-4 md:p-5">
-          {apiError && (
+          {authError && (
             <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
-              {apiError}
+              {authError}
             </div>
           )}
           
@@ -218,6 +192,7 @@ function LoginModal({ modalVisible, onCloseModal }) {
                 className={`bg-gray-50 border ${errors.email ? 'border-red-500' : 'border-gray-300'} text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white`}
                 value={formData.email}
                 onChange={handleChange}
+                disabled={isLoading}
               />
               {errors.email && <p className="mt-1 text-sm text-red-600">{errors.email}</p>}
             </div>
@@ -236,6 +211,7 @@ function LoginModal({ modalVisible, onCloseModal }) {
                 className={`bg-gray-50 border ${errors.password ? 'border-red-500' : 'border-gray-300'} text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white`}
                 value={formData.password}
                 onChange={handleChange}
+                disabled={isLoading}
               />
               {errors.password && <p className="mt-1 text-sm text-red-600">{errors.password}</p>}
             </div>
@@ -249,6 +225,7 @@ function LoginModal({ modalVisible, onCloseModal }) {
                     className="w-4 h-4 border border-gray-300 rounded bg-gray-50 focus:ring-3 focus:ring-blue-300 dark:bg-gray-600 dark:border-gray-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 dark:focus:ring-offset-gray-800"
                     checked={formData.remember}
                     onChange={handleChange}
+                    disabled={isLoading}
                   />
                 </div>
                 <label
@@ -268,10 +245,10 @@ function LoginModal({ modalVisible, onCloseModal }) {
             
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isLoading}
               className="w-full text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isSubmitting ? 'Logging in...' : 'Login to your account'}
+              {isLoading ? 'Logging in...' : 'Login to your account'}
             </button>
             
             <div className="text-sm font-medium text-gray-500 dark:text-gray-300">
@@ -289,9 +266,8 @@ function LoginModal({ modalVisible, onCloseModal }) {
                 onSuccess={handleGoogleLogin}
                 onError={(error) => {
                   console.log('Google Sign In Error:', error);
-                  setApiError('Google sign in failed. Please try again.');
                 }}
-                useOneTap
+                useOneTap={false}
               />
             </div>
           </form>

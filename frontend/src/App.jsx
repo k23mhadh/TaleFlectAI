@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { GoogleOAuthProvider } from '@react-oauth/google';
 
 // Context Providers
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -19,6 +18,8 @@ import BookCreation from './pages/BookCreation';
 import BookEditor from './pages/BookEditor';
 import BookPreview from './pages/BookPreview';
 import UserProfile from './pages/Profile';
+import Analytics from './pages/Analytics';
+import Bookmarks from './pages/Bookmarks';
 import NotFound from './pages/NotFound';
 
 // Layouts
@@ -150,17 +151,25 @@ const AppContent = () => {
         } 
       />
 
-      {/* Redirect authenticated users from home to dashboard */}
       <Route 
-        path="/" 
+        path="/analytics" 
         element={
-          isAuthenticated ? (
-            <Navigate to="/dashboard" replace />
-          ) : (
-            <PublicLayout>
-              <HomePage />
-            </PublicLayout>
-          )
+          <ProtectedRoute>
+            <AuthenticatedLayout>
+              <Analytics />
+            </AuthenticatedLayout>
+          </ProtectedRoute>
+        } 
+      />
+
+      <Route 
+        path="/bookmarks" 
+        element={
+          <ProtectedRoute>
+            <AuthenticatedLayout>
+              <Bookmarks />
+            </AuthenticatedLayout>
+          </ProtectedRoute>
         } 
       />
 
@@ -179,18 +188,14 @@ const AppContent = () => {
 
 // Main App Component
 function App() {
-  const googleClientId = import.meta.env.REACT_APP_GOOGLE_CLIENT_ID || 'YOUR_GOOGLE_CLIENT_ID';
-
   return (
-    <GoogleOAuthProvider clientId={googleClientId}>
-      <BrowserRouter>
-        <AuthProvider>
-          <div className="App">
-            <AppContent />
-          </div>
-        </AuthProvider>
-      </BrowserRouter>
-    </GoogleOAuthProvider>
+    <BrowserRouter>
+      <AuthProvider>
+        <div className="App">
+          <AppContent />
+        </div>
+      </AuthProvider>
+    </BrowserRouter>
   );
 }
 
