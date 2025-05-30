@@ -1,1137 +1,696 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import Navbar from '../../components/Navbar';
 import { 
-  Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, 
-  List, ListOrdered, Image as ImageIcon, Type, Heading1, Heading2, 
-  Highlighter, PaintBucket, Crop, RotateCw, Trash2, ZoomIn, ZoomOut,
-  MaximizeIcon, MinimizeIcon, ChevronDown, Save, Code, Sun,Moon ,X ,RotateCcw
+  Bold, Italic, Underline, Save, Download, Wand2, Lightbulb, 
+  Eye, Settings, Sun, Moon, Maximize, Minimize, RotateCcw,
+  Plus, Trash2, Move, Copy, Users, Share2, BookOpen
 } from 'lucide-react';
+import apiService from '../../services/api';
+import { useAuth } from '../../contexts/AuthContext';
+import LoadingSpinner from '../../components/common/LoadingSpinner';
+import { formatNumber, calculateReadingTime, debounce } from '../../utils';
+import toast from 'react-hot-toast';
 
 const BookEditor = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  
+  // State management
   const [book, setBook] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activeSidebar, setActiveSidebar] = useState('outline');
+  const [saving, setSaving] = useState(false);
   const [activeChapter, setActiveChapter] = useState(null);
   const [content, setContent] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [showGeneratePanel, setShowGeneratePanel] = useState(false);
-  const [generatePrompt, setGeneratePrompt] = useState('');
-  const [theme, setTheme] = useState('dark'); // 'dark' or 'light'
-  const [focusMode, setFocusMode] = useState(false);
+  const [title, setTitle] = useState('');
   const [wordCount, setWordCount] = useState(0);
   const [readingTime, setReadingTime] = useState(0);
-  const [showReferences, setShowReferences] = useState(false);
-  const [showVersionHistory, setShowVersionHistory] = useState(false);
-  const [versions, setVersions] = useState([]);
-  const [selectedText, setSelectedText] = useState('');
-  const [selectionRange, setSelectionRange] = useState(null);
-  const [showImageEditor, setShowImageEditor] = useState(false);
-  const [currentImage, setCurrentImage] = useState(null);
-  const [fontSize, setFontSize] = useState('16px');
-  const [fontFamily, setFontFamily] = useState('Arial');
-  const [textColor, setTextColor] = useState('#000000');
-  const [backgroundColor, setBackgroundColor] = useState('transparent');
-  const [showColorPicker, setShowColorPicker] = useState(false);
-  const [showImageToolbar, setShowImageToolbar] = useState(false);
-  const [imageRotation, setImageRotation] = useState(0);
-  const [imageZoom, setImageZoom] = useState(100);
-  const [imageCrop, setImageCrop] = useState({ x: 0, y: 0, width: 100, height: 100 });
-  const [richTextMode, setRichTextMode] = useState(true);
-  const [paragraphStyle, setParagraphStyle] = useState('normal'); // normal, h1, h2, etc.
-  const [alignment, setAlignment] = useState('left'); // left, center, right
   
+  // UI State
+  const [theme, setTheme] = useState('dark');
+  const [focusMode, setFocusMode] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [activeTab, setActiveTab] = useState('chapters');
+  
+  // AI State
+  const [aiLoading, setAiLoading] = useState(false);
+  const [showAIPanel, setShowAIPanel] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiCreativity, setAiCreativity] = useState(0.7);
+  
+  // Export State
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportFormat, setExportFormat] = useState('pdf');
+  const [exportOptions, setExportOptions] = useState({
+    includeTableOfContents: true,
+    includeCover: true,
+    includeChapterBreaks: true
+  });
+
+  // Refs
   const editorRef = useRef(null);
-  const autoSaveTimeout = useRef(null);
-  const colorPickerRef = useRef(null);
-  const imageInputRef = useRef(null);
+  const autoSaveTimeoutRef = useRef(null);
+
+  // Load book data
   useEffect(() => {
-    fetchBookData();
-  }, [id]);
-
-  useEffect(() => {
-    if (content) {
-      // Calculate word count and reading time
-      const words = content.split(/\s+/).filter(Boolean).length;
-      setWordCount(words);
-      setReadingTime(Math.ceil(words / 200)); // 200 words per minute
-    }
-  }, [content]);
-
-  useEffect(() => {
-    // Auto-save after 5 seconds of inactivity
-    if (autoSaveTimeout.current) {
-      clearTimeout(autoSaveTimeout.current);
-    }
-    autoSaveTimeout.current = setTimeout(() => {
-      saveContent();
-    }, 5000);
-
-    return () => clearTimeout(autoSaveTimeout.current);
-  }, [content]);
-
-  // Close color picker when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (colorPickerRef.current && !colorPickerRef.current.contains(event.target)) {
-        setShowColorPicker(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
-
-  const fetchBookData = async () => {
-    // Mock data - replace with actual API call
-    setTimeout(() => {
-      const mockBook = {
-        id: id,
-        title: 'The Quantum Paradox',
-        description: 'A sci-fi novel about time travel and quantum mechanics',
-        genre: 'Science Fiction',
-        chapters: [
-          { id: 'ch1', title: 'The Discovery', content: 'Dr. Sarah Chen had always known this day would come...', wordCount: 2450 },
-          { id: 'ch2', title: 'The First Jump', content: 'The laboratory hummed with an eerie vibration as the machine powered up...', wordCount: 1890 },
-          { id: 'ch3', title: 'Temporal Consequences', content: '', wordCount: 0 },
-          { id: 'ch4', title: 'Paradox Rising', content: '', wordCount: 0 },
-        ],
-        characters: [
-          { name: 'Dr. Sarah Chen', role: 'Protagonist', description: 'Brilliant physicist specializing in quantum mechanics' },
-          { name: 'Dr. Marcus Wells', role: 'Mentor', description: 'Sarah\'s former professor and research partner' },
-        ],
-        settings: [
-          { name: 'Quantum Research Facility', description: 'A cutting-edge laboratory hidden in the mountains' },
-          { name: '2042 Timeline', description: 'A future version of Earth facing climate disaster' },
-        ],
-        plotPoints: [
-          'Discovery of quantum tunneling through time',
-          'First successful time jump',
-          'Meeting future self and creating paradox',
-          'Resolution through quantum entanglement',
-        ],
-        images: [
-          { id: 'img1', name: 'Research Facility Exterior', src: '/api/placeholder/400/300', caption: 'The Quantum Research Facility' },
-          { id: 'img2', name: 'Time Machine Prototype', src: '/api/placeholder/400/300', caption: 'The experimental time device' },
-        ]
-      };
-      
-      setBook(mockBook);
-      
-      if (mockBook.chapters.length > 0) {
-        setActiveChapter(mockBook.chapters[0].id);
-        setContent(mockBook.chapters[0].content);
-      }
-      
-      setLoading(false);
-    }, 1000);
-  };
-
-  const handleChapterChange = (chapterId) => {
-    saveContent();
-    const chapter = book.chapters.find(ch => ch.id === chapterId);
-    setActiveChapter(chapterId);
-    setContent(chapter.content);
-  };
-
-  const saveContent = async () => {
-    if (!activeChapter) return;
-    
-    setSaving(true);
-    
-    // Mock save - replace with actual API call
-    setTimeout(() => {
-      const updatedChapters = book.chapters.map(ch => 
-        ch.id === activeChapter 
-          ? {...ch, content: content, wordCount: content.split(/\s+/).filter(Boolean).length}
-          : ch
-      );
-      
-      setBook({...book, chapters: updatedChapters});
-      setSaving(false);
-    }, 500);
-  };
-
-  const handleContentChange = (e) => {
-    setContent(e.target.value);
-  };
-
-  const handleTextSelection = () => {
-    if (editorRef.current) {
-      const selection = window.getSelection();
-      if (selection.rangeCount > 0) {
-        const range = selection.getRangeAt(0);
-        if (editorRef.current.contains(range.commonAncestorContainer)) {
-          const text = selection.toString();
-          if (text) {
-            setSelectedText(text);
-            setSelectionRange(range);
-          } else {
-            setSelectedText('');
-            setSelectionRange(null);
+    const fetchBook = async () => {
+      try {
+        setLoading(true);
+        const response = await apiService.getBook(id);
+        
+        if (response.success) {
+          setBook(response.data);
+          
+          if (response.data.chapters && response.data.chapters.length > 0) {
+            const firstChapter = response.data.chapters[0];
+            setActiveChapter(firstChapter._id);
+            setContent(firstChapter.content || '');
+            setTitle(firstChapter.title || '');
           }
         }
+      } catch (error) {
+        console.error('Error fetching book:', error);
+        toast.error('Failed to load book');
+        navigate('/projects');
+      } finally {
+        setLoading(false);
       }
-    }
-  };
-
-  const applyTextStyle = (style) => {
-    if (!selectionRange || !selectedText) return;
-    
-    // This is a simplified implementation - in a real app, you would use
-    // a rich text editor library (like Draft.js, Slate, or QuillJS) for proper formatting
-    
-    const selectedContent = selectionRange.toString();
-    const startPos = content.indexOf(selectedContent);
-    if (startPos === -1) return;
-    
-    let formattedText = '';
-    
-    switch(style) {
-      case 'bold':
-        formattedText = `<strong>${selectedContent}</strong>`;
-        break;
-      case 'italic':
-        formattedText = `<em>${selectedContent}</em>`;
-        break;
-      case 'underline':
-        formattedText = `<u>${selectedContent}</u>`;
-        break;
-      case 'highlight':
-        formattedText = `<mark>${selectedContent}</mark>`;
-        break;
-      case 'color':
-        formattedText = `<span style="color:${textColor}">${selectedContent}</span>`;
-        break;
-      case 'background':
-        formattedText = `<span style="background-color:${backgroundColor}">${selectedContent}</span>`;
-        break;
-      case 'h1':
-        formattedText = `<h1>${selectedContent}</h1>`;
-        break;
-      case 'h2':
-        formattedText = `<h2>${selectedContent}</h2>`;
-        break;
-      default:
-        return;
-    }
-    
-    const newContent = 
-      content.substring(0, startPos) + 
-      formattedText + 
-      content.substring(startPos + selectedContent.length);
-    
-    setContent(newContent);
-    setSelectedText('');
-    setSelectionRange(null);
-  };
-
-  const addNewChapter = () => {
-    saveContent();
-    const newChapterId = `ch${book.chapters.length + 1}`;
-    const newChapter = {
-      id: newChapterId,
-      title: `Chapter ${book.chapters.length + 1}`,
-      content: '',
-      wordCount: 0
     };
-    
-    const updatedChapters = [...book.chapters, newChapter];
-    setBook({...book, chapters: updatedChapters});
-    setActiveChapter(newChapterId);
-    setContent('');
-  };
 
-  const generateContent = async () => {
-    const currentChapter = book.chapters.find(ch => ch.id === activeChapter);
-    
-    setSaving(true);
-    
-    // Mock AI generation - replace with actual API call
-    setTimeout(() => {
-      const generatedText = `${content ? content + '\n\n' : ''}${
-        currentChapter.title === 'The Discovery' 
-          ? "Dr. Sarah Chen had always known this day would come. The quantum equations had predicted it years ago, but seeing it manifested in the lab was another thing entirely. The particles weren't just entangled - they were bridging across time itself.\n\n\"Marcus, you need to see this,\" she called to her research partner. The readings were unmistakable. They had created a quantum bridge through time.\n\nDr. Marcus Wells approached the monitoring station cautiously, his experienced eyes widening as he scanned the data. \"Is that what I think it is?\"\n\n\"Yes,\" Sarah nodded, her heart racing. \"Time coherence. The particles are communicating with versions of themselves from different temporal positions. We've done it, Marcus. We've found the doorway.\""
-          : "The breakthrough was unexpected but unmistakable. As Sarah reviewed the data for the third time, she felt a strange mixture of elation and dread. What they had discovered would change humanity forever, but she wasn't sure if the world was ready for it."
-      }`;
+    if (id) {
+      fetchBook();
+    }
+  }, [id, navigate]);
+
+  // Auto-save functionality
+  const debouncedSave = useCallback(
+    debounce(async (chapterId, chapterTitle, chapterContent) => {
+      if (!chapterId) return;
       
-      setContent(generatedText);
-      
-      const updatedChapters = book.chapters.map(ch => 
-        ch.id === activeChapter 
-          ? {...ch, content: generatedText, wordCount: generatedText.split(/\s+/).filter(Boolean).length}
-          : ch
-      );
-      
-      setBook({...book, chapters: updatedChapters});
-      setSaving(false);
-      setShowGeneratePanel(false);
-    }, 2000);
-  };
-
-  const toggleTheme = () => {
-    setTheme(theme === 'dark' ? 'light' : 'dark');
-  };
-
-  const toggleFocusMode = () => {
-    setFocusMode(!focusMode);
-  };
-
-  const insertReference = (reference) => {
-    setContent(content + ` [${reference}]`);
-  };
-
-  const exportBook = (format) => {
-    // Mock export functionality
-    alert(`Exporting book as ${format}`);
-  };
-
-  const loadVersionHistory = () => {
-    // Mock version history
-    setVersions([
-      { id: 'v1', timestamp: '2025-02-20 10:30', content: 'Initial draft' },
-      { id: 'v2', timestamp: '2025-02-20 11:45', content: 'Added character dialogue' },
-    ]);
-    setShowVersionHistory(true);
-  };
-
-  const handleImageUpload = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      const reader = new FileReader();
-      
-      reader.onload = (event) => {
-        const newImage = {
-          id: `img${book.images.length + 1}`,
-          name: file.name,
-          src: event.target.result,
-          caption: 'New image'
-        };
-        
-        setBook({
-          ...book,
-          images: [...book.images, newImage]
+      try {
+        setSaving(true);
+        await apiService.updateChapter(id, chapterId, {
+          title: chapterTitle,
+          content: chapterContent
         });
         
-        insertImageIntoContent(newImage);
-      };
+        // Update local state
+        setBook(prev => ({
+          ...prev,
+          chapters: prev.chapters.map(ch => 
+            ch._id === chapterId 
+              ? { ...ch, title: chapterTitle, content: chapterContent, wordCount: chapterContent.split(/\s+/).filter(Boolean).length }
+              : ch
+          )
+        }));
+        
+        toast.success('Saved', { duration: 1000 });
+      } catch (error) {
+        console.error('Auto-save error:', error);
+        toast.error('Failed to save');
+      } finally {
+        setSaving(false);
+      }
+    }, 2000),
+    [id]
+  );
+
+  // Handle content changes
+  useEffect(() => {
+    if (activeChapter && (content !== '' || title !== '')) {
+      debouncedSave(activeChapter, title, content);
+    }
+  }, [content, title, activeChapter, debouncedSave]);
+
+  // Calculate word count and reading time
+  useEffect(() => {
+    const words = content.split(/\s+/).filter(Boolean).length;
+    setWordCount(words);
+    setReadingTime(Math.ceil(words / 200));
+  }, [content]);
+
+  // Handle chapter selection
+  const handleChapterSelect = useCallback(async (chapterId) => {
+    // Save current chapter before switching
+    if (activeChapter && activeChapter !== chapterId) {
+      try {
+        await apiService.updateChapter(id, activeChapter, {
+          title,
+          content
+        });
+      } catch (error) {
+        console.error('Error saving current chapter:', error);
+      }
+    }
+
+    const chapter = book.chapters.find(ch => ch._id === chapterId);
+    if (chapter) {
+      setActiveChapter(chapterId);
+      setContent(chapter.content || '');
+      setTitle(chapter.title || '');
+    }
+  }, [activeChapter, book?.chapters, content, title, id]);
+
+  // Add new chapter
+  const handleAddChapter = async () => {
+    try {
+      const newChapterTitle = `Chapter ${book.chapters.length + 1}`;
+      const response = await apiService.addChapter(id, {
+        title: newChapterTitle,
+        content: ''
+      });
+
+      if (response.success) {
+        setBook(prev => ({
+          ...prev,
+          chapters: [...prev.chapters, response.data]
+        }));
+        
+        setActiveChapter(response.data._id);
+        setContent('');
+        setTitle(newChapterTitle);
+        
+        toast.success('Chapter added');
+      }
+    } catch (error) {
+      console.error('Error adding chapter:', error);
+      toast.error('Failed to add chapter');
+    }
+  };
+
+  // Delete chapter
+  const handleDeleteChapter = async (chapterId) => {
+    if (!confirm('Are you sure you want to delete this chapter?')) return;
+
+    try {
+      await apiService.deleteChapter(id, chapterId);
       
-      reader.readAsDataURL(file);
+      const updatedChapters = book.chapters.filter(ch => ch._id !== chapterId);
+      setBook(prev => ({ ...prev, chapters: updatedChapters }));
+      
+      if (activeChapter === chapterId) {
+        if (updatedChapters.length > 0) {
+          handleChapterSelect(updatedChapters[0]._id);
+        } else {
+          setActiveChapter(null);
+          setContent('');
+          setTitle('');
+        }
+      }
+      
+      toast.success('Chapter deleted');
+    } catch (error) {
+      console.error('Error deleting chapter:', error);
+      toast.error('Failed to delete chapter');
     }
   };
 
-  const insertImageIntoContent = (image) => {
-    const imageTag = `<img src="${image.src}" alt="${image.caption}" class="book-image" data-image-id="${image.id}" style="max-width: 100%; height: auto; margin: 10px 0;" />`;
-    setContent(content + '\n\n' + imageTag);
-    saveContent();
-  };
+  // AI Content Generation
+  const handleAIGenerate = async () => {
+    if (!activeChapter) {
+      toast.error('Please select a chapter first');
+      return;
+    }
 
-  const openImageEditor = (imageId) => {
-    const image = book.images.find(img => img.id === imageId);
-    if (image) {
-      setCurrentImage(image);
-      setShowImageEditor(true);
-      setImageRotation(0);
-      setImageZoom(100);
-      setImageCrop({ x: 0, y: 0, width: 100, height: 100 });
+    try {
+      setAiLoading(true);
+      const response = await apiService.generateChapter(
+        id, 
+        activeChapter, 
+        aiPrompt,
+        aiCreativity
+      );
+
+      if (response.success) {
+        setContent(response.data.content);
+        setShowAIPanel(false);
+        setAiPrompt('');
+        toast.success('Content generated successfully!');
+      }
+    } catch (error) {
+      console.error('AI generation error:', error);
+      toast.error(error.message || 'Failed to generate content');
+    } finally {
+      setAiLoading(false);
     }
   };
 
-  const saveImageEdits = () => {
-    if (!currentImage) return;
-    
-    // In a real application, you would apply the transformations to the image
-    // Here we'll just mock the behavior
-    
-    // Apply edits to the image in the book
-    const updatedImages = book.images.map(img => 
-      img.id === currentImage.id 
-        ? {
-            ...img,
-            // In a real app, these would be applied to the actual image
-            rotation: imageRotation,
-            zoom: imageZoom,
-            crop: imageCrop
-          } 
-        : img
-    );
-    
-    setBook({...book, images: updatedImages});
-    
-    // Update the image in the content (this is simplified - in a real app you'd handle the DOM updates)
-    const imgRegex = new RegExp(`<img[^>]*data-image-id="${currentImage.id}"[^>]*>`, 'g');
-    const updatedImg = `<img src="${currentImage.src}" alt="${currentImage.caption}" class="book-image" data-image-id="${currentImage.id}" style="max-width: 100%; height: auto; margin: 10px 0; transform: rotate(${imageRotation}deg) scale(${imageZoom/100});" />`;
-    
-    setContent(content.replace(imgRegex, updatedImg));
-    
-    setShowImageEditor(false);
-    setCurrentImage(null);
-    saveContent();
+  // Export functionality
+  const handleExport = async () => {
+    try {
+      setLoading(true);
+      const result = await apiService.exportBook(id, exportFormat, exportOptions);
+      
+      // Download the file
+      apiService.downloadFile(result.blob, result.filename);
+      
+      setShowExportModal(false);
+      toast.success(`Book exported as ${exportFormat.toUpperCase()}`);
+    } catch (error) {
+      console.error('Export error:', error);
+      toast.error('Failed to export book');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const deleteImage = () => {
-    if (!currentImage) return;
-    
-    // Remove the image from the book's image collection
-    const updatedImages = book.images.filter(img => img.id !== currentImage.id);
-    setBook({...book, images: updatedImages});
-    
-    // Remove the image from the content
-    const imgRegex = new RegExp(`<img[^>]*data-image-id="${currentImage.id}"[^>]*>`, 'g');
-    setContent(content.replace(imgRegex, ''));
-    
-    setShowImageEditor(false);
-    setCurrentImage(null);
-    saveContent();
-  };
+  // Manual save
+  const handleManualSave = async () => {
+    if (!activeChapter) return;
 
-  const toggleRichTextMode = () => {
-    setRichTextMode(!richTextMode);
-  };
-
-  const applyAlignment = (align) => {
-    setAlignment(align);
-    
-    if (!selectionRange || !selectedText) return;
-    
-    const selectedContent = selectionRange.toString();
-    const startPos = content.indexOf(selectedContent);
-    if (startPos === -1) return;
-    
-    let formattedText = `<div style="text-align:${align}">${selectedContent}</div>`;
-    
-    const newContent = 
-      content.substring(0, startPos) + 
-      formattedText + 
-      content.substring(startPos + selectedContent.length);
-    
-    setContent(newContent);
-    setSelectedText('');
-    setSelectionRange(null);
+    try {
+      setSaving(true);
+      await apiService.updateChapter(id, activeChapter, {
+        title,
+        content
+      });
+      toast.success('Changes saved');
+    } catch (error) {
+      console.error('Save error:', error);
+      toast.error('Failed to save changes');
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (loading) {
     return (
-      <div className={`min-h-screen ${theme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'}`}>
-        <Navbar />
-        <div className="container mx-auto px-4 py-8 text-center">
-          <p>Loading editor...</p>
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <LoadingSpinner size="large" color="yellow" />
+      </div>
+    );
+  }
+
+  if (!book) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-white mb-4">Book not found</h1>
+          <button
+            onClick={() => navigate('/projects')}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Back to Projects
+          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className={`min-h-screen ${theme === 'dark' ? 'bg-gray-900' : 'bg-gray-100'} flex flex-col`}>
-      <Navbar />
-      
-      <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
-        <div className={`w-64 ${theme === 'dark' ? 'bg-gray-800' : 'bg-white'} border-r ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'} flex flex-col`}>
-          {/* Book Title */}
-          <div className={`p-4 border-b ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
-            <h1 className={`font-bold text-xl truncate ${theme === 'dark' ? 'text-gray-100' : 'text-gray-800'}`}>{book.title}</h1>
-            <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>{book.genre}</p>
-          </div>
-          
-          {/* Sidebar Tabs */}
-          <div className={`flex border-b ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
-            <button 
-              className={`flex-1 py-3 text-sm font-medium ${
-                activeSidebar === 'outline' 
-                  ? `border-b-2 ${theme === 'dark' ? 'border-blue-600 text-blue-400' : 'border-blue-600 text-blue-600'}` 
-                  : `${theme === 'dark' ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-800'}`
-              }`}
-              onClick={() => setActiveSidebar('outline')}
+    <div className={`min-h-screen ${theme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'} flex`}>
+      {/* Sidebar */}
+      {!focusMode && (
+        <div className={`${sidebarOpen ? 'w-80' : 'w-16'} transition-all duration-300 ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-r flex flex-col`}>
+          {/* Sidebar Header */}
+          <div className={`p-4 border-b ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'} flex items-center justify-between`}>
+            {sidebarOpen && (
+              <div>
+                <h1 className={`text-lg font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'} truncate`}>
+                  {book.title}
+                </h1>
+                <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                  {formatNumber(book.wordCount)} words
+                </p>
+              </div>
+            )}
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className={`p-2 rounded ${theme === 'dark' ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
             >
-              Outline
-            </button>
-            <button 
-              className={`flex-1 py-3 text-sm font-medium ${
-                activeSidebar === 'settings' 
-                  ? `border-b-2 ${theme === 'dark' ? 'border-blue-600 text-blue-400' : 'border-blue-600 text-blue-600'}` 
-                  : `${theme === 'dark' ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-800'}`
-              }`}
-              onClick={() => setActiveSidebar('settings')}
-            >
-              Details
-            </button>
-            <button 
-              className={`flex-1 py-3 text-sm font-medium ${
-                activeSidebar === 'generate' 
-                  ? `border-b-2 ${theme === 'dark' ? 'border-blue-600 text-blue-400' : 'border-blue-600 text-blue-600'}` 
-                  : `${theme === 'dark' ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-800'}`
-              }`}
-              onClick={() => setActiveSidebar('generate')}
-            >
-              Generate
+              {sidebarOpen ? <Minimize size={16} /> : <Maximize size={16} />}
             </button>
           </div>
-          
-          {/* Sidebar Content */}
-          <div className="flex-1 overflow-y-auto">
-            {activeSidebar === 'outline' && (
-              <div className="p-4">
-                <div className="flex justify-between items-center mb-4">
-                  <h2 className={`font-semibold ${theme === 'dark' ? 'text-gray-200' : 'text-gray-800'}`}>Chapters</h2>
-                  <button 
-                    onClick={addNewChapter}
-                    className={`text-sm ${theme === 'dark' ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-800'}`}
-                  >
-                    + Add Chapter
-                  </button>
-                </div>
-                
-                <ul className="space-y-1">
-                  {book.chapters.map(chapter => (
-                    <li key={chapter.id}>
-                      <button
-                        onClick={() => handleChapterChange(chapter.id)}
-                        className={`w-full text-left px-3 py-2 rounded ${
-                          activeChapter === chapter.id 
-                            ? `${theme === 'dark' ? 'bg-blue-900 text-blue-200' : 'bg-blue-100 text-blue-800'}` 
-                            : `${theme === 'dark' ? 'hover:bg-gray-700 text-gray-300' : 'hover:bg-gray-100 text-gray-800'}`
-                        }`}
-                      >
-                        <div className="font-medium truncate">{chapter.title}</div>
-                        <div className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                          {chapter.wordCount > 0 ? `${chapter.wordCount} words` : 'Empty'}
-                        </div>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
 
-                <div className="mt-6">
-                  <h2 className={`font-semibold ${theme === 'dark' ? 'text-gray-200' : 'text-gray-800'} mb-2`}>Images</h2>
-                  <button
-                    onClick={() => imageInputRef.current.click()}
-                    className={`text-sm mb-3 flex items-center ${theme === 'dark' ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-800'}`}
-                  >
-                    <ImageIcon size={16} className="mr-1" /> Upload Image
-                  </button>
-                  <input
-                    ref={imageInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageUpload}
-                    className="hidden"
-                  />
-                  
-                  <ul className="space-y-2">
-                    {book.images.map(image => (
-                      <li key={image.id} className={`p-2 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-50'} rounded`}>
-                        <div className="flex items-center">
-                          <img src={image.src} alt={image.name} className="w-10 h-10 object-cover rounded mr-2" />
-                          <div className="flex-1">
-                            <div className={`text-sm font-medium truncate ${theme === 'dark' ? 'text-gray-200' : 'text-gray-800'}`}>{image.name}</div>
-                            <div className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>{image.caption}</div>
-                          </div>
-                          <button
-                            onClick={() => openImageEditor(image.id)}
-                            className={`px-2 py-1 text-xs ${theme === 'dark' ? 'bg-gray-600 hover:bg-gray-500' : 'bg-gray-200 hover:bg-gray-300'} rounded`}
-                          >
-                            Edit
-                          </button>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+          {sidebarOpen && (
+            <>
+              {/* Tabs */}
+              <div className={`flex border-b ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
+                <button
+                  onClick={() => setActiveTab('chapters')}
+                  className={`flex-1 py-3 px-4 text-sm font-medium ${
+                    activeTab === 'chapters'
+                      ? `border-b-2 border-blue-500 ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}`
+                      : `${theme === 'dark' ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'}`
+                  }`}
+                >
+                  Chapters
+                </button>
+                <button
+                  onClick={() => setActiveTab('outline')}
+                  className={`flex-1 py-3 px-4 text-sm font-medium ${
+                    activeTab === 'outline'
+                      ? `border-b-2 border-blue-500 ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}`
+                      : `${theme === 'dark' ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'}`
+                  }`}
+                >
+                  Outline
+                </button>
               </div>
-            )}
-            
-            {activeSidebar === 'settings' && (
-              <div className="p-4">
-                <div className="mb-4">
-                  <h2 className={`font-semibold ${theme === 'dark' ? 'text-gray-200' : 'text-gray-800'} mb-3`}>Characters</h2>
-                  <ul className="space-y-2">
-                    {book.characters.map((character, idx) => (
-                      <li key={idx} className={`p-2 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-50'} rounded`}>
-                        <div className={`font-medium ${theme === 'dark' ? 'text-gray-100' : 'text-gray-800'}`}>{character.name}</div>
-                        <div className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>{character.role}</div>
-                        <div className={`text-sm mt-1 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>{character.description}</div>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                
-                <div className="mb-4">
-                  <h2 className={`font-semibold ${theme === 'dark' ? 'text-gray-200' : 'text-gray-800'} mb-3`}>Settings</h2>
-                  <ul className="space-y-2">
-                    {book.settings.map((setting, idx) => (
-                      <li key={idx} className={`p-2 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-50'} rounded`}>
-                        <div className={`font-medium ${theme === 'dark' ? 'text-gray-100' : 'text-gray-800'}`}>{setting.name}</div>
-                        <div className={`text-sm mt-1 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>{setting.description}</div>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                
-                <div>
-                  <h2 className={`font-semibold ${theme === 'dark' ? 'text-gray-200' : 'text-gray-800'} mb-3`}>Plot Points</h2>
-                  <ul className={`space-y-1 list-disc pl-5 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
-                    {book.plotPoints.map((point, idx) => (
-                      <li key={idx} className="text-sm">{point}</li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            )}
-            
-            {activeSidebar === 'generate' && (
-              <div className="p-4">
-                <h2 className={`font-semibold ${theme === 'dark' ? 'text-gray-200' : 'text-gray-800'} mb-3`}>AI Generation</h2>
-                
-                <div className="space-y-3">
-                  <button
-                    onClick={() => {
-                      setGeneratePrompt("Continue the chapter with the next scene");
-                      setShowGeneratePanel(true);
-                    }}
-                    className={`w-full p-3 text-left ${theme === 'dark' ? 'bg-blue-900 hover:bg-blue-800 border-blue-800' : 'bg-blue-50 hover:bg-blue-100 border-blue-200'} rounded border`}
-                  >
-                    <div className={`font-medium ${theme === 'dark' ? 'text-blue-200' : 'text-blue-800'}`}>Continue Writing</div>
-                    <div className={`text-xs ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}`}>Generate the next part of your current chapter</div>
-                  </button>
-                  
-                  <button
-                    onClick={() => {
-                      setGeneratePrompt("Create a compelling character dialogue");
-                      setShowGeneratePanel(true);
-                    }}
-                    className={`w-full p-3 text-left ${theme === 'dark' ? 'bg-blue-900 hover:bg-blue-800 border-blue-800' : 'bg-blue-50 hover:bg-blue-100 border-blue-200'} rounded border`}
-                  >
-                    <div className={`font-medium ${theme === 'dark' ? 'text-blue-200' : 'text-blue-800'}`}>Add Dialogue</div>
-                    <div className={`text-xs ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}`}>Generate conversation between characters</div>
-                  </button>
-                  
-                  <button
-                    onClick={() => {
-                      setGeneratePrompt("Create a detailed description of the scene setting");
-                      setShowGeneratePanel(true);
-                    }}
-                    className={`w-full p-3 text-left ${theme === 'dark' ? 'bg-blue-900 hover:bg-blue-800 border-blue-800' : 'bg-blue-50 hover:bg-blue-100 border-blue-200'} rounded border`}
-                  >
-                    <div className={`font-medium ${theme === 'dark' ? 'text-blue-200' : 'text-blue-800'}`}>Describe Setting</div>
-                    <div className={`text-xs ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}`}>Generate vivid scene descriptions</div>
-                  </button>
-                  
-                  <button
-                    onClick={() => {
-                      setGeneratePrompt("Create a plot twist or unexpected event");
-                      setShowGeneratePanel(true);
-                    }}
-                    className={`w-full p-3 text-left ${theme === 'dark' ? 'bg-blue-900 hover:bg-blue-800 border-blue-800' : 'bg-blue-50 hover:bg-blue-100 border-blue-200'} rounded border`}
-                    >
-                      <div className={`font-medium ${theme === 'dark' ? 'text-blue-200' : 'text-blue-800'}`}>Add Plot Twist</div>
-                      <div className={`text-xs ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}`}>Generate an unexpected turn of events</div>
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-          
-          {/* Main Editor Area */}
-          <div className="flex-1 flex flex-col overflow-hidden">
-            {/* Editor Toolbar */}
-            <div className={`border-b ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} p-2`}>
-              <div className="flex items-center flex-wrap">
-                {/* Format Options */}
-                <div className="mr-4 flex space-x-1">
-                  <button 
-                    onClick={() => applyTextStyle('bold')}
-                    className={`p-1.5 rounded ${theme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
-                    title="Bold"
-                  >
-                    <Bold size={16} className={theme === 'dark' ? 'text-gray-200' : 'text-gray-700'} />
-                  </button>
-                  <button 
-                    onClick={() => applyTextStyle('italic')}
-                    className={`p-1.5 rounded ${theme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
-                    title="Italic"
-                  >
-                    <Italic size={16} className={theme === 'dark' ? 'text-gray-200' : 'text-gray-700'} />
-                  </button>
-                  <button 
-                    onClick={() => applyTextStyle('underline')}
-                    className={`p-1.5 rounded ${theme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
-                    title="Underline"
-                  >
-                    <Underline size={16} className={theme === 'dark' ? 'text-gray-200' : 'text-gray-700'} />
-                  </button>
-                  <button 
-                    onClick={() => applyTextStyle('highlight')}
-                    className={`p-1.5 rounded ${theme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
-                    title="Highlight"
-                  >
-                    <Highlighter size={16} className={theme === 'dark' ? 'text-gray-200' : 'text-gray-700'} />
-                  </button>
-                </div>
-                
-                {/* Paragraph Styles */}
-                <div className="mr-4 flex">
-                  <div className={`relative inline-block text-left border-r ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'} pr-3`}>
-                    <button 
-                      className={`flex items-center p-1.5 rounded ${theme === 'dark' ? 'hover:bg-gray-700 text-gray-200' : 'hover:bg-gray-100 text-gray-700'}`}
-                      onClick={() => setParagraphStyle('h1')}
-                    >
-                      <Type size={16} className="mr-1" />
-                      <span className="text-sm">Paragraph</span>
-                      <ChevronDown size={14} className="ml-1" />
-                    </button>
-                  </div>
-                </div>
-                
-                {/* Alignment */}
-                <div className="mr-4 flex space-x-1">
-                  <button 
-                    onClick={() => applyAlignment('left')}
-                    className={`p-1.5 rounded ${alignment === 'left' 
-                      ? `${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-200'}` 
-                      : `${theme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}`}
-                    title="Align Left"
-                  >
-                    <AlignLeft size={16} className={theme === 'dark' ? 'text-gray-200' : 'text-gray-700'} />
-                  </button>
-                  <button 
-                    onClick={() => applyAlignment('center')}
-                    className={`p-1.5 rounded ${alignment === 'center' 
-                      ? `${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-200'}` 
-                      : `${theme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}`}
-                    title="Align Center"
-                  >
-                    <AlignCenter size={16} className={theme === 'dark' ? 'text-gray-200' : 'text-gray-700'} />
-                  </button>
-                  <button 
-                    onClick={() => applyAlignment('right')}
-                    className={`p-1.5 rounded ${alignment === 'right' 
-                      ? `${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-200'}` 
-                      : `${theme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}`}
-                    title="Align Right"
-                  >
-                    <AlignRight size={16} className={theme === 'dark' ? 'text-gray-200' : 'text-gray-700'} />
-                  </button>
-                </div>
-                
-                {/* Lists */}
-                <div className="mr-4 flex space-x-1">
-                  <button 
-                    className={`p-1.5 rounded ${theme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
-                    title="Bullet List"
-                  >
-                    <List size={16} className={theme === 'dark' ? 'text-gray-200' : 'text-gray-700'} />
-                  </button>
-                  <button 
-                    className={`p-1.5 rounded ${theme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
-                    title="Numbered List"
-                  >
-                    <ListOrdered size={16} className={theme === 'dark' ? 'text-gray-200' : 'text-gray-700'} />
-                  </button>
-                </div>
-                
-                {/* Colors */}
-                <div className="mr-4 flex space-x-1">
-                  <button 
-                    onClick={() => setShowColorPicker(!showColorPicker)}
-                    className={`p-1.5 rounded ${theme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
-                    title="Text Color"
-                  >
-                    <PaintBucket size={16} className={theme === 'dark' ? 'text-gray-200' : 'text-gray-700'} />
-                  </button>
-                  {showColorPicker && (
-                    <div 
-                      ref={colorPickerRef}
-                      className={`absolute top-12 z-10 p-2 ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border rounded shadow-lg`}
-                    >
-                      <div className="flex space-x-1 mb-1">
-                        <button 
-                          onClick={() => {setTextColor('#FF0000'); applyTextStyle('color');}}
-                          className="w-6 h-6 bg-red-600 rounded"
-                        ></button>
-                        <button 
-                          onClick={() => {setTextColor('#0000FF'); applyTextStyle('color');}}
-                          className="w-6 h-6 bg-blue-600 rounded"
-                        ></button>
-                        <button 
-                          onClick={() => {setTextColor('#008000'); applyTextStyle('color');}}
-                          className="w-6 h-6 bg-green-600 rounded"
-                        ></button>
-                        <button 
-                          onClick={() => {setTextColor('#FFA500'); applyTextStyle('color');}}
-                          className="w-6 h-6 bg-yellow-500 rounded"
-                        ></button>
-                      </div>
-                      <div className="flex space-x-1">
-                        <button 
-                          onClick={() => {setBackgroundColor('#FFFF00'); applyTextStyle('background');}}
-                          className="w-6 h-6 bg-yellow-200 rounded"
-                        ></button>
-                        <button 
-                          onClick={() => {setBackgroundColor('#00FFFF'); applyTextStyle('background');}}
-                          className="w-6 h-6 bg-cyan-200 rounded"
-                        ></button>
-                        <button 
-                          onClick={() => {setBackgroundColor('#FF00FF'); applyTextStyle('background');}}
-                          className="w-6 h-6 bg-pink-200 rounded"
-                        ></button>
-                        <button 
-                          onClick={() => {setBackgroundColor('#CCCCCC'); applyTextStyle('background');}}
-                          className="w-6 h-6 bg-gray-300 rounded"
-                        ></button>
-                      </div>
+
+              {/* Tab Content */}
+              <div className="flex-1 overflow-y-auto p-4">
+                {activeTab === 'chapters' && (
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className={`font-semibold ${theme === 'dark' ? 'text-gray-200' : 'text-gray-800'}`}>
+                        Chapters
+                      </h3>
+                      <button
+                        onClick={handleAddChapter}
+                        className="p-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                        title="Add Chapter"
+                      >
+                        <Plus size={16} />
+                      </button>
                     </div>
-                  )}
-                </div>
-                
-                {/* Image */}
-                <div className="mr-4">
-                  <button 
-                    onClick={() => imageInputRef.current.click()}
-                    className={`p-1.5 rounded ${theme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
-                    title="Insert Image"
-                  >
-                    <ImageIcon size={16} className={theme === 'dark' ? 'text-gray-200' : 'text-gray-700'} />
-                  </button>
-                </div>
-                
-                {/* Rich Text Toggle */}
-                <div className="mr-4">
-                  <button 
-                    onClick={toggleRichTextMode}
-                    className={`p-1.5 rounded ${theme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
-                    title={richTextMode ? "Switch to HTML Mode" : "Switch to Rich Text Mode"}
-                  >
-                    <Code size={16} className={`${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'} ${richTextMode ? '' : 'text-blue-500'}`} />
-                  </button>
-                </div>
-                
-                <div className="flex-1"></div>
-                
-                {/* View Options */}
-                <div className="flex items-center space-x-2">
-                  <button 
-                    onClick={toggleTheme}
-                    className={`p-1.5 rounded ${theme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
-                    title={theme === 'dark' ? "Switch to Light Mode" : "Switch to Dark Mode"}
-                  >
-                    {theme === 'dark' ? (
-                      <Sun size={16} className="text-gray-200" />
-                    ) : (
-                      <Moon size={16} className="text-gray-700" />
-                    )}
-                  </button>
-                  <button 
-                    onClick={toggleFocusMode}
-                    className={`p-1.5 rounded ${theme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
-                    title={focusMode ? "Exit Focus Mode" : "Enter Focus Mode"}
-                  >
-                    {focusMode ? (
-                      <MinimizeIcon size={16} className={theme === 'dark' ? 'text-gray-200' : 'text-gray-700'} />
-                    ) : (
-                      <MaximizeIcon size={16} className={theme === 'dark' ? 'text-gray-200' : 'text-gray-700'} />
-                    )}
-                  </button>
-                  <button 
-                    onClick={saveContent}
-                    className={`flex items-center px-3 py-1.5 rounded ${theme === 'dark' ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
-                    title="Save"
-                  >
-                    <Save size={16} className="mr-1" />
-                    <span className="text-sm">Save</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-            
-            {/* Editor */}
-            <div className="flex-1 overflow-auto">
-              <div className={`h-full ${focusMode ? 'max-w-3xl mx-auto px-8' : 'px-4'}`}>
-                {activeChapter && (
-                  <div className="h-full">
-                    <h2 className={`text-2xl font-bold py-4 ${theme === 'dark' ? 'text-gray-100' : 'text-gray-800'}`}>
-                      {book.chapters.find(ch => ch.id === activeChapter)?.title}
-                    </h2>
-                    
-                    <div 
-                      className={`w-full h-[calc(100%-5rem)] ${theme === 'dark' ? 'bg-gray-800 text-gray-100' : 'bg-white text-gray-800'}`}
-                    >
-                      <textarea
-                        ref={editorRef}
-                        value={content}
-                        onChange={handleContentChange}
-                        onMouseUp={handleTextSelection}
-                        onKeyUp={handleTextSelection}
-                        className={`w-full h-full resize-none p-4 ${theme === 'dark' ? 'bg-gray-800 text-gray-100' : 'bg-white text-gray-800'} focus:outline-none`}
-                        style={{
-                          fontFamily: fontFamily,
-                          fontSize: fontSize,
-                        }}
-                        placeholder="Start writing your chapter here..."
-                      />
+
+                    <div className="space-y-2">
+                      {book.chapters.map((chapter) => (
+                        <div
+                          key={chapter._id}
+                          className={`p-3 rounded cursor-pointer border ${
+                            activeChapter === chapter._id
+                              ? `${theme === 'dark' ? 'bg-blue-900 border-blue-700' : 'bg-blue-50 border-blue-200'}`
+                              : `${theme === 'dark' ? 'bg-gray-700 border-gray-600 hover:bg-gray-600' : 'bg-gray-50 border-gray-200 hover:bg-gray-100'}`
+                          }`}
+                          onClick={() => handleChapterSelect(chapter._id)}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1 min-w-0">
+                              <h4 className={`font-medium truncate ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                                {chapter.title}
+                              </h4>
+                              <p className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                                {formatNumber(chapter.wordCount || 0)} words
+                              </p>
+                            </div>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteChapter(chapter._id);
+                              }}
+                              className={`p-1 rounded ${theme === 'dark' ? 'hover:bg-red-800 text-red-400' : 'hover:bg-red-100 text-red-600'}`}
+                              title="Delete Chapter"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === 'outline' && (
+                  <div>
+                    <h3 className={`font-semibold mb-4 ${theme === 'dark' ? 'text-gray-200' : 'text-gray-800'}`}>
+                      Book Outline
+                    </h3>
+                    <div className={`p-4 rounded border ${theme === 'dark' ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                      <p className={`text-sm ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+                        {book.outline || 'No outline available. Use AI to generate one!'}
+                      </p>
                     </div>
                   </div>
                 )}
               </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Main Editor */}
+      <div className="flex-1 flex flex-col">
+        {/* Toolbar */}
+        <div className={`${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-b p-4`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              {/* Chapter Title Input */}
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Chapter Title"
+                className={`text-xl font-bold bg-transparent border-none outline-none ${theme === 'dark' ? 'text-white placeholder-gray-400' : 'text-gray-900 placeholder-gray-500'}`}
+              />
+            </div>
+
+            <div className="flex items-center space-x-2">
+              {/* Word Count */}
+              <div className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+                {formatNumber(wordCount)} words • {readingTime} min read
+              </div>
+
+              {/* AI Button */}
+              <button
+                onClick={() => setShowAIPanel(true)}
+                disabled={aiLoading}
+                className="flex items-center space-x-2 px-3 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
+              >
+                <Wand2 size={16} />
+                <span>AI</span>
+              </button>
+
+              {/* Save Button */}
+              <button
+                onClick={handleManualSave}
+                disabled={saving}
+                className="flex items-center space-x-2 px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+              >
+                <Save size={16} />
+                <span>{saving ? 'Saving...' : 'Save'}</span>
+              </button>
+
+              {/* Export Button */}
+              <button
+                onClick={() => setShowExportModal(true)}
+                className="flex items-center space-x-2 px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                <Download size={16} />
+                <span>Export</span>
+              </button>
+
+              {/* Theme Toggle */}
+              <button
+                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                className={`p-2 rounded ${theme === 'dark' ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
+              >
+                {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+              </button>
+
+              {/* Focus Mode */}
+              <button
+                onClick={() => setFocusMode(!focusMode)}
+                className={`p-2 rounded ${theme === 'dark' ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
+              >
+                {focusMode ? <Minimize size={16} /> : <Maximize size={16} />}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Editor Content */}
+        <div className="flex-1 overflow-hidden">
+          <textarea
+            ref={editorRef}
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            placeholder="Start writing your chapter here..."
+            className={`w-full h-full resize-none p-8 text-lg leading-relaxed outline-none ${
+              theme === 'dark' 
+                ? 'bg-gray-900 text-gray-100 placeholder-gray-500' 
+                : 'bg-white text-gray-900 placeholder-gray-400'
+            }`}
+            style={{ fontFamily: 'Georgia, serif' }}
+          />
+        </div>
+
+        {/* Status Bar */}
+        <div className={`${theme === 'dark' ? 'bg-gray-800 border-gray-700 text-gray-400' : 'bg-gray-50 border-gray-200 text-gray-600'} border-t px-4 py-2 flex items-center justify-between text-sm`}>
+          <div>
+            {saving ? 'Saving...' : 'All changes saved'}
+          </div>
+          <div>
+            Chapter {book.chapters.findIndex(ch => ch._id === activeChapter) + 1} of {book.chapters.length}
+          </div>
+        </div>
+      </div>
+
+      {/* AI Panel */}
+      {showAIPanel && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className={`w-full max-w-lg ${theme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-xl`}>
+            <div className={`p-4 border-b ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'} flex items-center justify-between`}>
+              <h3 className={`font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                AI Content Generator
+              </h3>
+              <button
+                onClick={() => setShowAIPanel(false)}
+                className={`p-2 rounded ${theme === 'dark' ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
+              >
+                ×
+              </button>
             </div>
             
-            {/* Status Bar */}
-            <div className={`p-2 border-t flex items-center justify-between ${theme === 'dark' ? 'bg-gray-800 border-gray-700 text-gray-400' : 'bg-white border-gray-200 text-gray-500'}`}>
-              <div className="text-xs">
-                {saving ? 'Saving...' : 'Last saved: Just now'}
+            <div className="p-4 space-y-4">
+              <div>
+                <label className={`block text-sm font-medium mb-2 ${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}`}>
+                  What would you like me to write?
+                </label>
+                <textarea
+                  value={aiPrompt}
+                  onChange={(e) => setAiPrompt(e.target.value)}
+                  placeholder="Describe what you want to generate (e.g., 'Continue the story with a plot twist', 'Add dialogue between characters', etc.)"
+                  className={`w-full h-24 p-3 border rounded ${
+                    theme === 'dark' 
+                      ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
+                      : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                  }`}
+                />
               </div>
-              <div className="text-xs flex space-x-4">
-                <span>{wordCount} words</span>
-                <span>~{readingTime} min read</span>
-                <button 
-                  onClick={() => setShowReferences(!showReferences)}
-                  className="hover:underline"
+
+              <div>
+                <label className={`block text-sm font-medium mb-2 ${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}`}>
+                  Creativity Level: {Math.round(aiCreativity * 100)}%
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.1"
+                  value={aiCreativity}
+                  onChange={(e) => setAiCreativity(parseFloat(e.target.value))}
+                  className="w-full"
+                />
+                <div className="flex justify-between text-xs text-gray-500 mt-1">
+                  <span>Conservative</span>
+                  <span>Creative</span>
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-3">
+                <button
+                  onClick={() => setShowAIPanel(false)}
+                  className={`px-4 py-2 rounded ${theme === 'dark' ? 'bg-gray-700 hover:bg-gray-600 text-gray-200' : 'bg-gray-200 hover:bg-gray-300 text-gray-800'}`}
                 >
-                  References
+                  Cancel
                 </button>
-                <button 
-                  onClick={loadVersionHistory}
-                  className="hover:underline"
+                <button
+                  onClick={handleAIGenerate}
+                  disabled={aiLoading || !aiPrompt.trim()}
+                  className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50 flex items-center space-x-2"
                 >
-                  Version History
+                  {aiLoading ? <LoadingSpinner size="small" color="white" /> : <Wand2 size={16} />}
+                  <span>{aiLoading ? 'Generating...' : 'Generate'}</span>
                 </button>
               </div>
             </div>
           </div>
         </div>
-        
-        {/* Generate Content Panel */}
-        {showGeneratePanel && (
-          <div className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50`}>
-            <div className={`w-full max-w-lg ${theme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-xl`}>
-              <div className={`p-4 border-b ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
-                <h3 className={`font-bold ${theme === 'dark' ? 'text-gray-100' : 'text-gray-800'}`}>Generate Content</h3>
-              </div>
-              <div className="p-4">
-                <textarea
-                  value={generatePrompt}
-                  onChange={(e) => setGeneratePrompt(e.target.value)}
-                  className={`w-full h-32 p-2 rounded ${theme === 'dark' ? 'bg-gray-700 border-gray-600 text-gray-100' : 'bg-gray-50 border-gray-300 text-gray-800'} border`}
-                  placeholder="Describe what you'd like to generate..."
-                />
-                
-                <div className={`mt-2 text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                  AI will generate content based on your book's context and this prompt.
-                </div>
-              </div>
-              <div className={`p-4 border-t ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'} flex justify-end space-x-3`}>
-                <button
-                  onClick={() => setShowGeneratePanel(false)}
-                  className={`px-4 py-2 rounded ${theme === 'dark' ? 'bg-gray-700 hover:bg-gray-600 text-gray-200' : 'bg-gray-200 hover:bg-gray-300 text-gray-800'}`}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={generateContent}
-                  className={`px-4 py-2 rounded ${theme === 'dark' ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
-                >
-                  Generate
-                </button>
-              </div>
+      )}
+
+      {/* Export Modal */}
+      {showExportModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className={`w-full max-w-lg ${theme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-xl`}>
+            <div className={`p-4 border-b ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'} flex items-center justify-between`}>
+              <h3 className={`font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                Export Book
+              </h3>
+              <button
+                onClick={() => setShowExportModal(false)}
+                className={`p-2 rounded ${theme === 'dark' ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
+              >
+                ×
+              </button>
             </div>
-          </div>
-        )}
-        
-        {/* References Panel */}
-        {showReferences && (
-          <div className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50`}>
-            <div className={`w-full max-w-lg ${theme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-xl`}>
-              <div className={`p-4 border-b ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'} flex justify-between items-center`}>
-                <h3 className={`font-bold ${theme === 'dark' ? 'text-gray-100' : 'text-gray-800'}`}>References</h3>
-                <button 
-                  onClick={() => setShowReferences(false)}
-                  className={`${theme === 'dark' ? 'text-gray-300 hover:text-gray-100' : 'text-gray-500 hover:text-gray-700'}`}
-                >
-                  <X size={18} />
-                </button>
-              </div>
-              <div className="p-4 max-h-96 overflow-y-auto">
-                <ul className="space-y-2">
-                  <li className={`p-2 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-50'} rounded`}>
-                    <div className={`font-medium ${theme === 'dark' ? 'text-gray-100' : 'text-gray-800'}`}>Quantum Entanglement</div>
-                    <div className={`text-sm ${theme === 'dark' ? 'text-gray-300' : 'text-gray-600'}`}>A phenomenon where particles become correlated such that the quantum state of each particle cannot be described independently.</div>
-                    <button 
-                      onClick={() => insertReference('Einstein, A., Podolsky, B., & Rosen, N. (1935). Can quantum-mechanical description of physical reality be considered complete?')}
-                      className={`mt-1 text-xs ${theme === 'dark' ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-800'}`}
+            
+            <div className="p-4 space-y-4">
+              <div>
+                <label className={`block text-sm font-medium mb-2 ${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}`}>
+                  Format
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {['pdf', 'docx', 'epub', 'txt'].map(format => (
+                    <button
+                      key={format}
+                      onClick={() => setExportFormat(format)}
+                      className={`p-3 text-center rounded border ${
+                        exportFormat === format
+                          ? 'border-blue-500 bg-blue-50 text-blue-700'
+                          : `${theme === 'dark' ? 'border-gray-600 bg-gray-700 text-gray-200 hover:bg-gray-600' : 'border-gray-300 bg-gray-50 text-gray-700 hover:bg-gray-100'}`
+                      }`}
                     >
-                      Insert Reference
+                      {format.toUpperCase()}
                     </button>
-                  </li>
-                  <li className={`p-2 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-50'} rounded`}>
-                    <div className={`font-medium ${theme === 'dark' ? 'text-gray-100' : 'text-gray-800'}`}>Temporal Paradoxes</div>
-                    <div className={`text-sm ${theme === 'dark' ? 'text-gray-300' : 'text-gray-600'}`}>Contradictions in the timeline that may occur due to time travel, including the grandfather paradox and bootstrap paradox.</div>
-                    <button 
-                      onClick={() => insertReference('Hawking, S. (1992). Chronology protection conjecture. Physical Review D, 46(2), 603.')}
-                      className={`mt-1 text-xs ${theme === 'dark' ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-800'}`}
-                    >
-                      Insert Reference
-                    </button>
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        )}
-        
-        {/* Version History Panel */}
-        {showVersionHistory && (
-          <div className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50`}>
-            <div className={`w-full max-w-lg ${theme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-xl`}>
-              <div className={`p-4 border-b ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'} flex justify-between items-center`}>
-                <h3 className={`font-bold ${theme === 'dark' ? 'text-gray-100' : 'text-gray-800'}`}>Version History</h3>
-                <button 
-                  onClick={() => setShowVersionHistory(false)}
-                  className={`${theme === 'dark' ? 'text-gray-300 hover:text-gray-100' : 'text-gray-500 hover:text-gray-700'}`}
-                >
-                  <X size={18} />
-                </button>
-              </div>
-              <div className="p-4 max-h-96 overflow-y-auto">
-                <ul className="space-y-2">
-                  {versions.map(version => (
-                    <li key={version.id} className={`p-2 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-50'} rounded`}>
-                      <div className="flex justify-between">
-                        <div className={`font-medium ${theme === 'dark' ? 'text-gray-100' : 'text-gray-800'}`}>{version.timestamp}</div>
-                        <div className="flex space-x-2">
-                          <button 
-                            className={`text-xs ${theme === 'dark' ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-800'}`}
-                          >
-                            View
-                          </button>
-                          <button 
-                            className={`text-xs ${theme === 'dark' ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-800'}`}
-                          >
-                            Restore
-                          </button>
-                        </div>
-                      </div>
-                      <div className={`text-sm mt-1 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-600'}`}>{version.content}</div>
-                    </li>
                   ))}
-                </ul>
-              </div>
-            </div>
-          </div>
-        )}
-        
-        {/* Image Editor */}
-        {showImageEditor && currentImage && (
-          <div className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50`}>
-            <div className={`w-full max-w-2xl ${theme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-xl`}>
-              <div className={`p-4 border-b ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'} flex justify-between items-center`}>
-                <h3 className={`font-bold ${theme === 'dark' ? 'text-gray-100' : 'text-gray-800'}`}>Edit Image: {currentImage.name}</h3>
-                <button 
-                  onClick={() => setShowImageEditor(false)}
-                  className={`${theme === 'dark' ? 'text-gray-300 hover:text-gray-100' : 'text-gray-500 hover:text-gray-700'}`}
-                >
-                  <X size={18} />
-                </button>
-              </div>
-              
-              <div className="p-4">
-                {/* Image Preview */}
-                <div className="flex justify-center mb-4">
-                  <div className="relative">
-                    <img 
-                      src={currentImage.src} 
-                      alt={currentImage.caption} 
-                      className="max-w-full max-h-64 object-contain"
-                      style={{
-                        transform: `rotate(${imageRotation}deg) scale(${imageZoom/100})`,
-                      }}
-                    />
-                  </div>
                 </div>
-                
-                {/* Image Tools */}
-                <div className={`p-2 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-100'} rounded mb-4 flex justify-center space-x-4`}>
-                  <button 
-                    onClick={() => setImageRotation((prev) => prev - 90)}
-                    className={`p-2 rounded ${theme === 'dark' ? 'hover:bg-gray-600' : 'hover:bg-gray-200'}`}
-                    title="Rotate Left"
-                  >
-                    <RotateCcw size={20} className={theme === 'dark' ? 'text-gray-200' : 'text-gray-700'} />
-                  </button>
-                  <button 
-                    onClick={() => setImageRotation((prev) => prev + 90)}
-                    className={`p-2 rounded ${theme === 'dark' ? 'hover:bg-gray-600' : 'hover:bg-gray-200'}`}
-                    title="Rotate Right"
-                  >
-                    <RotateCw size={20} className={theme === 'dark' ? 'text-gray-200' : 'text-gray-700'} />
-                  </button>
-                  <button 
-                    onClick={() => setImageZoom((prev) => Math.min(prev + 10, 200))}
-                    className={`p-2 rounded ${theme === 'dark' ? 'hover:bg-gray-600' : 'hover:bg-gray-200'}`}
-                    title="Zoom In"
-                  >
-                    <ZoomIn size={20} className={theme === 'dark' ? 'text-gray-200' : 'text-gray-700'} />
-                  </button>
-                  <button 
-                    onClick={() => setImageZoom((prev) => Math.max(prev - 10, 50))}
-                    className={`p-2 rounded ${theme === 'dark' ? 'hover:bg-gray-600' : 'hover:bg-gray-200'}`}
-                    title="Zoom Out"
-                  >
-                    <ZoomOut size={20} className={theme === 'dark' ? 'text-gray-200' : 'text-gray-700'} />
-                  </button>
-                  <button 
-                    onClick={() => setShowImageToolbar(!showImageToolbar)}
-                    className={`p-2 rounded ${theme === 'dark' ? 'hover:bg-gray-600' : 'hover:bg-gray-200'}`}
-                    title="Crop"
-                  >
-                    <Crop size={20} className={theme === 'dark' ? 'text-gray-200' : 'text-gray-700'} />
-                  </button>
-                  <button 
-                    onClick={deleteImage}
-                    className={`p-2 rounded ${theme === 'dark' ? 'bg-red-900 hover:bg-red-800' : 'bg-red-100 hover:bg-red-200'}`}
-                    title="Delete Image"
-                  >
-                    <Trash2 size={20} className={theme === 'dark' ? 'text-red-200' : 'text-red-600'} />
-                  </button>
-                </div>
-                
-                {/* Caption */}
-                <div className="mb-4">
-                  <label className={`block mb-2 text-sm font-medium ${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}`}>
-                    Caption
-                  </label>
+              </div>
+
+              <div className="space-y-2">
+                <label className={`flex items-center space-x-2 ${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}`}>
                   <input
-                    type="text"
-                    value={currentImage.caption}
-                    onChange={(e) => setCurrentImage({...currentImage, caption: e.target.value})}
-                    className={`w-full p-2 rounded ${theme === 'dark' ? 'bg-gray-700 border-gray-600 text-gray-100' : 'bg-gray-50 border-gray-300 text-gray-800'} border`}
+                    type="checkbox"
+                    checked={exportOptions.includeTableOfContents}
+                    onChange={(e) => setExportOptions(prev => ({
+                      ...prev,
+                      includeTableOfContents: e.target.checked
+                    }))}
+                    className="rounded"
                   />
-                </div>
+                  <span className="text-sm">Include table of contents</span>
+                </label>
+                
+                <label className={`flex items-center space-x-2 ${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}`}>
+                  <input
+                    type="checkbox"
+                    checked={exportOptions.includeCover}
+                    onChange={(e) => setExportOptions(prev => ({
+                      ...prev,
+                      includeCover: e.target.checked
+                    }))}
+                    className="rounded"
+                  />
+                  <span className="text-sm">Include cover page</span>
+                </label>
+                
+                <label className={`flex items-center space-x-2 ${theme === 'dark' ? 'text-gray-200' : 'text-gray-700'}`}>
+                  <input
+                    type="checkbox"
+                    checked={exportOptions.includeChapterBreaks}
+                    onChange={(e) => setExportOptions(prev => ({
+                      ...prev,
+                      includeChapterBreaks: e.target.checked
+                    }))}
+                    className="rounded"
+                  />
+                  <span className="text-sm">Include chapter breaks</span>
+                </label>
               </div>
-              
-              <div className={`p-4 border-t ${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'} flex justify-end space-x-3`}>
+
+              <div className="flex justify-end space-x-3">
                 <button
-                  onClick={() => setShowImageEditor(false)}
+                  onClick={() => setShowExportModal(false)}
                   className={`px-4 py-2 rounded ${theme === 'dark' ? 'bg-gray-700 hover:bg-gray-600 text-gray-200' : 'bg-gray-200 hover:bg-gray-300 text-gray-800'}`}
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={saveImageEdits}
-                  className={`px-4 py-2 rounded ${theme === 'dark' ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
+                  onClick={handleExport}
+                  disabled={loading}
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 flex items-center space-x-2"
                 >
-                  Save Changes
+                  {loading ? <LoadingSpinner size="small" color="white" /> : <Download size={16} />}
+                  <span>{loading ? 'Exporting...' : 'Export'}</span>
                 </button>
               </div>
             </div>
           </div>
-        )}
-      </div>
-    );
-  };
-  
-  export default BookEditor;
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default BookEditor;
